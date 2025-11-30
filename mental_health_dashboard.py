@@ -8,13 +8,12 @@ from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-# ========== 1. LOAD AND PREPARE DATA (Cached for Speed) ==========
 @st.cache_resource
 def load_and_train_models():
-    # Load data
+    #Load data
     df = pd.read_csv('digital_habits_vs_mental_health.csv')
     
-    # Clean data
+    #Clean data
     df = df.dropna()
     valid = (
         (df['screen_time_hours'] >= 0) & (df['screen_time_hours'] <= 24) &
@@ -25,13 +24,13 @@ def load_and_train_models():
     )
     df = df[valid].reset_index(drop=True)
     
-    # Feature engineering
+    #Feature engineering
     df['stress_mood_index'] = (df['stress_level'] * 0.6) + ((11 - df['mood_score']) * 0.4)
     
-    # Train models
+    #Train models
     features = ['screen_time_hours', 'hours_on_TikTok', 'sleep_hours', 'stress_mood_index']
     
-    # --- K-means ---
+    #K-means
     X_clust = df[features]
     scaler_clust = StandardScaler()
     X_clust_scaled = scaler_clust.fit_transform(X_clust)
@@ -40,9 +39,9 @@ def load_and_train_models():
     cluster_names = {0: 'Balanced Users', 1: 'At-Risk Digital Engagers', 2: 'Light & Healthy Users'}
     df['cluster_name'] = df['cluster'].map(cluster_names)
     
-    # --- Random Forest ---
-    y_clf = (df['stress_level'] > 7).astype(int)  # High-stress = stress_level > 7
-    X_clf = df[features]  # Only core features
+    #Random Forest
+    y_clf = (df['stress_level'] > 7).astype(int)
+    X_clf = df[features] 
     X_train, X_test, y_train, y_test = train_test_split(X_clf, y_clf, test_size=0.2, random_state=42, stratify=y_clf)
     scaler_clf = StandardScaler()
     X_train_scaled = scaler_clf.fit_transform(X_train)
@@ -54,23 +53,22 @@ def load_and_train_models():
 
 df, scaler_clust, kmeans, scaler_clf, rf_model, features, cluster_summary, cluster_names = load_and_train_models()
 
-# ========== 2. HELPER FUNCTIONS ==========
+# Tips
 def get_recommendation(cluster):
     recs = {
         0: "✅ **Balanced Users**: Keep up great habits! Maintain moderate usage and good sleep.",
-        1: "⚠️ **At-Risk Digital Engagers**: Reduce TikTok (esp. before bed) and aim for 6.5+ hrs sleep.",
+        1: "⚠️ **At-Risk Digital Engagers**: Reduce Screen Time (TikTok) esp. before bed and aim for 6.5+ hrs sleep.",
         2: "🌟 **Light & Healthy Users**: Excellent! Share your routine as a wellness role model."
     }
     return recs.get(cluster, "No recommendation available.")
 
-# ========== 3. STREAMLIT UI ==========
 st.set_page_config(page_title="Digital Habits & Mental Health", layout="wide")
 st.title("📱 Digital Habits & Mental Health Dashboard")
 st.markdown("""
 Enter your habits below to get personalized insights based on data from **98,135 working adults**.
 """)
 
-# --- SIDEBAR: DATA OVERVIEW ---
+#Sidebar
 with st.sidebar:
     st.header("📊 Population Insights")
     st.metric("Avg Screen Time", f"{df['screen_time_hours'].mean():.1f} hrs")
@@ -80,7 +78,7 @@ with st.sidebar:
     st.subheader("User Segments")
     st.bar_chart(df['cluster_name'].value_counts())
 
-# --- MAIN: USER INPUT ---
+#USER INPUT
 st.header("📝 Your Digital Habits")
 col1, col2 = st.columns(2)
 
@@ -106,27 +104,23 @@ with col4:
     stress_level = st.slider('Stress Level (1-10)', min_value=1, max_value=10, value=5)
     mood_score = st.slider('Mood Score (1-10)', min_value=1, max_value=10, value=7)
 
-# --- ANALYSIS BUTTON ---
 if st.button('🔍 Analyze My Habits', type="primary"):
     # Validate TikTok ≤ Screen Time
     if tiktok_time > screen_time:
         st.error("❌ TikTok hours cannot exceed total screen time. Please adjust.")
         st.stop()
     
-    # Calculate derived metrics
     stress_mood_index = (stress_level * 0.6) + ((11 - mood_score) * 0.4)
     
-    # Predict cluster
     user_input_clust = np.array([[screen_time, tiktok_time, sleep_time, stress_mood_index]])
     user_input_clust_scaled = scaler_clust.transform(user_input_clust)
     user_cluster = kmeans.predict(user_input_clust_scaled)[0]
     user_cluster_name = cluster_names[user_cluster]
     
-    # Predict high-stress risk
     user_input_clf_scaled = scaler_clf.transform(user_input_clust)
     high_stress_prob = rf_model.predict_proba(user_input_clf_scaled)[0, 1]
     
-    # --- RESULTS ---
+    #RESULTS
     st.header("🎯 Your Personalized Results")
     res_col1, res_col2, res_col3 = st.columns(3)
     res_col1.metric("Stress-Mood Index", f"{stress_mood_index:.2f}")
@@ -135,10 +129,10 @@ if st.button('🔍 Analyze My Habits', type="primary"):
     
     st.markdown(get_recommendation(user_cluster))
     
-    # --- VISUALIZATIONS ---
+    #VISUALIZATIONS
     st.header("📈 Visual Insights")
     
-    # 1. MODEL COMPARISON: Feature Importance (Random Forest)
+    #Random Forest
     st.subheader("What Drives High-Stress Risk?")
     importances = rf_model.feature_importances_
     importance_df = pd.DataFrame({
@@ -151,7 +145,7 @@ if st.button('🔍 Analyze My Habits', type="primary"):
     ax_imp.set_title('Feature Importance for High-Stress Prediction')
     st.pyplot(fig_imp)
     
-    # 2. CLUSTER RADAR CHART: You vs. Your Cluster
+    #You vs. Your Cluster
     st.subheader("You vs. Your Cluster Average")
     cluster_vals = cluster_summary.loc[user_cluster]
     user_vals = [screen_time, tiktok_time, sleep_time, stress_mood_index]
@@ -177,7 +171,7 @@ if st.button('🔍 Analyze My Habits', type="primary"):
     ax_radar.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
     st.pyplot(fig_radar)
     
-    # 3. SCATTER PLOT: Your Position in the Population
+    #SCATTER PLOT
     st.subheader("Your Position in the Population")
     fig_scatter, ax_scatter = plt.subplots(figsize=(10, 5))
     
@@ -194,7 +188,7 @@ if st.button('🔍 Analyze My Habits', type="primary"):
     ax_scatter.legend()
     st.pyplot(fig_scatter)
     
-    # --- SHOW 10 EXAMPLES FROM SAME CLUSTER ---
+    #EXAMPLES FROM SAME CLUSTER
     st.header("👥 Real Examples from Your Cluster")
     st.write(f"You’re in the **{user_cluster_name}** group. Here are 10 real users like you:")
     
@@ -210,6 +204,5 @@ if st.button('🔍 Analyze My Habits', type="primary"):
     st.dataframe(example_df.style.format("{:.1f}"))
     st.caption("💡 These are real responses from others in your segment. Yours may differ!")
 
-# --- FOOTER ---
 st.markdown("---")
 st.caption("💡 **Try this**: Reduce TikTok usage and increase sleep, see how your metrics improve!")
